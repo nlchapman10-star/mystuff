@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Spending Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .hidden-view { display: none !important; }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        input[type="date"]::-webkit-inner-spin-button,
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            display: none;
+            -webkit-appearance: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-200 flex justify-center h-screen overflow-hidden">
+
+    <div id="app-container" class="w-full max-w-md h-full bg-gray-50 flex flex-col relative shadow-2xl">
+        
+        <!-- ==================== VIEWS ==================== -->
+        
+        <!-- INPUT VIEW -->
+        <div id="view-input" class="flex-1 overflow-y-auto pb-24 bg-gray-50">
+            <div class="bg-white px-6 py-8 rounded-b-3xl shadow-sm mb-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">New Expense</h2>
+                
+                <form id="expense-form" class="space-y-6 max-w-sm mx-auto">
+                    <!-- Amount Input -->
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <i class="ph ph-currency-dollar text-3xl text-gray-400"></i>
+                        </div>
+                        <input type="number" id="input-amount" step="0.01" required inputmode="decimal"
+                            class="block w-full pl-12 pr-4 py-4 text-4xl font-bold text-gray-900 bg-gray-50 border-0 rounded-2xl ring-1 ring-inset ring-gray-200 focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-all text-center"
+                            placeholder="0.00" />
+                    </div>
+
+                    <!-- Date Input -->
+                    <div>
+                        <input type="date" id="input-date" required
+                            class="block w-full px-4 py-3 text-lg text-gray-700 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all shadow-sm" />
+                    </div>
+
+                    <!-- Category Grid -->
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-600 mb-3">Category</label>
+                        <div id="category-grid" class="grid grid-cols-3 gap-2">
+                            <!-- Categories generated via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Note Input -->
+                    <div>
+                        <input type="text" id="input-note" placeholder="Note (optional)"
+                            class="block w-full px-4 py-3 text-base text-gray-700 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm" />
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" id="save-btn" disabled
+                        class="w-full flex items-center justify-center py-4 rounded-xl text-lg font-bold text-white transition-all shadow-lg bg-blue-600 hover:bg-blue-700 opacity-50 cursor-not-allowed">
+                        <span id="save-btn-text">Save Expense</span>
+                        <i id="save-btn-icon" class="ph ph-check text-xl ml-2 hidden"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- DASHBOARD VIEW -->
+        <div id="view-dashboard" class="flex-1 overflow-y-auto pb-24 bg-gray-50 flex flex-col hidden-view">
+            <!-- Header inserted via JS -->
+            <div id="dashboard-header" class="flex items-center justify-between bg-white px-4 py-3 shadow-sm border-b z-10 sticky top-0"></div>
+            
+            <div class="p-6" id="dashboard-content">
+                <!-- Dashboard content generated via JS -->
+            </div>
+        </div>
+
+        <!-- HISTORY VIEW -->
+        <div id="view-history" class="flex-1 overflow-y-auto pb-24 bg-gray-50 flex flex-col hidden-view">
+            <!-- Header inserted via JS -->
+            <div id="history-header" class="flex items-center justify-between bg-white px-4 py-3 shadow-sm border-b z-10 sticky top-0"></div>
+            
+            <div class="p-4" id="history-content">
+                <!-- History list generated via JS -->
+            </div>
+        </div>
+
+        <!-- BOTTOM NAVIGATION -->
+        <div class="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 pb-safe">
+            <div class="flex justify-around items-center h-16">
+                <button onclick="switchTab('input')" id="nav-input" class="flex flex-col items-center justify-center w-full h-full transition-colors text-blue-600">
+                    <i class="ph ph-plus text-2xl font-bold"></i>
+                    <span class="text-[10px] font-semibold mt-1">Add</span>
+                </button>
+                
+                <button onclick="switchTab('dashboard')" id="nav-dashboard" class="flex flex-col items-center justify-center w-full h-full transition-colors text-gray-400 hover:text-gray-600">
+                    <i class="ph ph-chart-pie-slice text-2xl"></i>
+                    <span class="text-[10px] font-semibold mt-1">Dashboard</span>
+                </button>
+                
+                <button onclick="switchTab('history')" id="nav-history" class="flex flex-col items-center justify-center w-full h-full transition-colors text-gray-400 hover:text-gray-600">
+                    <i class="ph ph-list text-2xl"></i>
+                    <span class="text-[10px] font-semibold mt-1">History</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FIREBASE & LOGIC -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Configuration Variables
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Data & State
+        const CATEGORIES = [
+            { id: 'set_expenses', label: 'Set Expenses', color: 'bg-blue-500', textColor: 'text-blue-700', bgLight: 'bg-blue-100' },
+            { id: 'dining_out', label: 'Dining Out', color: 'bg-orange-500', textColor: 'text-orange-700', bgLight: 'bg-orange-100' },
+            { id: 'alcohol', label: 'Alcohol', color: 'bg-purple-500', textColor: 'text-purple-700', bgLight: 'bg-purple-100' },
+            { id: 'health', label: 'Health', color: 'bg-red-500', textColor: 'text-red-700', bgLight: 'bg-red-100' },
+            { id: 'haircuts', label: 'Haircuts', color: 'bg-pink-500', textColor: 'text-pink-700', bgLight: 'bg-pink-100' },
+            { id: 'pets', label: 'Pets', color: 'bg-yellow-500', textColor: 'text-yellow-700', bgLight: 'bg-yellow-100' },
+            { id: 'fuel', label: 'Fuel', color: 'bg-slate-500', textColor: 'text-slate-700', bgLight: 'bg-slate-100' },
+            { id: 'sports', label: 'Sports', color: 'bg-emerald-500', textColor: 'text-emerald-700', bgLight: 'bg-emerald-100' },
+            { id: 'groceries', label: 'Groceries', color: 'bg-lime-500', textColor: 'text-lime-700', bgLight: 'bg-lime-100' },
+            { id: 'clothing', label: 'Clothing', color: 'bg-indigo-500', textColor: 'text-indigo-700', bgLight: 'bg-indigo-100' },
+            { id: 'other', label: 'Other', color: 'bg-gray-400', textColor: 'text-gray-700', bgLight: 'bg-gray-100' },
+        ];
+
+        let transactions = [];
+        let currentMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        let selectedCategory = '';
+        let activeTab = 'input';
+        
+        let app, auth, db, user;
+
+        // DOM Elements
+        const formAmount = document.getElementById('input-amount');
+        const formDate = document.getElementById('input-date');
+        const formNote = document.getElementById('input-note');
+        const saveBtn = document.getElementById('save-btn');
+        const saveBtnText = document.getElementById('save-btn-text');
+        const saveBtnIcon = document.getElementById('save-btn-icon');
+        const categoryGrid = document.getElementById('category-grid');
+
+        // Initialize default date to today
+        formDate.value = new Date().toISOString().split('T')[0];
+
+        // Initialize App & Firebase
+        async function init() {
+            renderCategoryGrid();
+            validateForm();
+
+            if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (e) {
+                    console.error("Auth Error", e);
+                }
+
+                onAuthStateChanged(auth, (currentUser) => {
+                    if (currentUser) {
+                        user = currentUser;
+                        listenForTransactions();
+                    }
+                });
+            } else {
+                console.warn("Firebase not configured. App will be view-only.");
+            }
+        }
+
+        function listenForTransactions() {
+            if (!user || !db) return;
+            
+            const txPath = collection(db, 'artifacts', appId, 'public', 'data', 'transactions');
+            
+            onSnapshot(txPath, (snapshot) => {
+                transactions = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                // Sort descending in memory to adhere to constraints
+                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                updateViews();
+            }, (error) => {
+                console.error("Error fetching transactions", error);
+            });
+        }
+
+        // Tab Management
+        window.switchTab = function(tabName) {
+            activeTab = tabName;
+            
+            // Hide all views
+            document.getElementById('view-input').classList.add('hidden-view');
+            document.getElementById('view-dashboard').classList.add('hidden-view');
+            document.getElementById('view-history').classList.add('hidden-view');
+            
+            // Show selected view
+            document.getElementById(`view-${tabName}`).classList.remove('hidden-view');
+            
+            // Update Nav Styles
+            const navIds = ['input', 'dashboard', 'history'];
+            navIds.forEach(id => {
+                const btn = document.getElementById(`nav-${id}`);
+                const icon = btn.querySelector('i');
+                if (id === tabName) {
+                    btn.classList.replace('text-gray-400', 'text-blue-600');
+                    btn.classList.replace('hover:text-gray-600', 'text-blue-600');
+                    icon.classList.add('font-bold');
+                } else {
+                    btn.classList.replace('text-blue-600', 'text-gray-400');
+                    btn.classList.add('hover:text-gray-600');
+                    icon.classList.remove('font-bold');
+                }
+            });
+
+            updateViews();
+        };
+
+        // Input View Logic
+        function renderCategoryGrid() {
+            categoryGrid.innerHTML = CATEGORIES.map(cat => `
+                <button type="button" onclick="selectCategory('${cat.id}')" id="cat-btn-${cat.id}"
+                    class="flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all bg-white border-gray-100 ${cat.textColor} hover:bg-gray-50">
+                    <span class="text-xs font-semibold mt-1 text-center leading-tight">${cat.label}</span>
+                </button>
+            `).join('');
+        }
+
+        window.selectCategory = function(catId) {
+            selectedCategory = catId;
+            CATEGORIES.forEach(cat => {
+                const btn = document.getElementById(`cat-btn-${cat.id}`);
+                if (cat.id === selectedCategory) {
+                    btn.className = `flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${cat.color} border-transparent text-white shadow-md transform scale-105`;
+                } else {
+                    btn.className = `flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all bg-white border-gray-100 ${cat.textColor} hover:bg-gray-50`;
+                }
+            });
+            validateForm();
+        };
+
+        function validateForm() {
+            const hasAmount = formAmount.value.trim() !== '';
+            const hasDate = formDate.value.trim() !== '';
+            const hasCategory = selectedCategory !== '';
+            
+            if (hasAmount && hasDate && hasCategory) {
+                saveBtn.disabled = false;
+                saveBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                saveBtn.classList.add('active:scale-95');
+            } else {
+                saveBtn.disabled = true;
+                saveBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                saveBtn.classList.remove('active:scale-95');
+            }
+        }
+
+        formAmount.addEventListener('input', validateForm);
+        formDate.addEventListener('input', validateForm);
+
+        document.getElementById('expense-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (saveBtn.disabled || !user || !db) return;
+
+            const txAmount = parseFloat(formAmount.value);
+            const txDate = formDate.value;
+            const txNote = formNote.value;
+
+            // UI Loading state
+            saveBtn.disabled = true;
+            saveBtnText.innerText = 'Saving...';
+            
+            try {
+                const txPath = collection(db, 'artifacts', appId, 'public', 'data', 'transactions');
+                await addDoc(txPath, {
+                    amount: txAmount,
+                    category: selectedCategory,
+                    date: txDate,
+                    note: txNote,
+                    addedBy: user.uid,
+                    createdAt: new Date().toISOString()
+                });
+
+                // Reset Form (keep date)
+                formAmount.value = '';
+                formNote.value = '';
+                selectedCategory = '';
+                renderCategoryGrid(); // reset UI colors
+                
+                // Show Success
+                saveBtnText.innerText = 'Saved!';
+                saveBtnIcon.classList.remove('hidden');
+                saveBtn.classList.replace('bg-blue-600', 'bg-green-500');
+                saveBtn.classList.replace('hover:bg-blue-700', 'hover:bg-green-600');
+                
+                setTimeout(() => {
+                    saveBtnText.innerText = 'Save Expense';
+                    saveBtnIcon.classList.add('hidden');
+                    saveBtn.classList.replace('bg-green-500', 'bg-blue-600');
+                    saveBtn.classList.replace('hover:bg-green-600', 'hover:bg-blue-700');
+                    validateForm();
+                }, 2000);
+
+            } catch (err) {
+                console.error("Error saving:", err);
+                saveBtnText.innerText = 'Error';
+                setTimeout(() => {
+                    saveBtnText.innerText = 'Save Expense';
+                    validateForm();
+                }, 2000);
+            }
+        });
+
+        // Data Processing & Views
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+        }
+
+        window.changeMonth = function(delta) {
+            currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + delta, 1);
+            updateViews();
+        };
+
+        function getMonthHeaderHTML() {
+            const label = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            return `
+                <button onclick="changeMonth(-1)" class="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors">
+                    <i class="ph ph-caret-left text-2xl"></i>
+                </button>
+                <h2 class="text-lg font-bold text-gray-800">${label}</h2>
+                <button onclick="changeMonth(1)" class="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors">
+                    <i class="ph ph-caret-right text-2xl"></i>
+                </button>
+            `;
+        }
+
+        function updateViews() {
+            // Filter current month transactions
+            const viewMonthStr = currentMonth.toISOString().substring(0, 7);
+            const currentMonthTxs = transactions.filter(tx => {
+                const txMonthStr = tx.date.substring(0, 7);
+                return txMonthStr === viewMonthStr;
+            });
+
+            // Update Headers
+            if (activeTab === 'dashboard') {
+                document.getElementById('dashboard-header').innerHTML = getMonthHeaderHTML();
+                renderDashboard(currentMonthTxs);
+            } else if (activeTab === 'history') {
+                document.getElementById('history-header').innerHTML = getMonthHeaderHTML();
+                renderHistory(currentMonthTxs);
+            }
+        }
+
+        function renderDashboard(txs) {
+            const container = document.getElementById('dashboard-content');
+            let grandTotal = 0;
+            const totals = {};
+
+            txs.forEach(tx => {
+                totals[tx.category] = (totals[tx.category] || 0) + parseFloat(tx.amount);
+                grandTotal += parseFloat(tx.amount);
+            });
+
+            let html = `
+                <!-- Total Spent Card -->
+                <div class="bg-gradient-to-br from-blue-600 to-blue-800 rounded-3xl p-6 shadow-xl text-white mb-8 relative overflow-hidden">
+                    <div class="relative z-10">
+                        <h3 class="text-blue-100 font-medium mb-1">Total Spent</h3>
+                        <div class="text-5xl font-black tracking-tight">${formatCurrency(grandTotal)}</div>
+                    </div>
+                    <div class="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 rounded-full bg-white opacity-10"></div>
+                    <div class="absolute bottom-0 right-10 -mb-6 w-20 h-20 rounded-full bg-white opacity-10"></div>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-4">Breakdown</h3>
+                <div class="space-y-4">
+            `;
+
+            if (grandTotal === 0) {
+                html += `
+                    <div class="text-center py-10 text-gray-400">
+                        <i class="ph ph-chart-pie-slice text-5xl opacity-20 block mb-3"></i>
+                        <p>No expenses tracked this month yet.</p>
+                    </div>
+                `;
+            } else {
+                CATEGORIES.forEach(cat => {
+                    const amount = totals[cat.id] || 0;
+                    if (amount === 0) return;
+
+                    const percentage = (amount / grandTotal) * 100;
+                    html += `
+                        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                            <div class="flex justify-between items-end mb-2">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-3 h-3 rounded-full ${cat.color}"></div>
+                                    <span class="font-semibold text-gray-700">${cat.label}</span>
+                                </div>
+                                <span class="font-bold text-gray-900">${formatCurrency(amount)}</span>
+                            </div>
+                            <div class="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                                <div class="h-full ${cat.color} rounded-full" style="width: ${Math.max(percentage, 1)}%; transition: width 0.5s ease-out"></div>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        function renderHistory(txs) {
+            const container = document.getElementById('history-content');
+            
+            if (txs.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-10 text-gray-400">
+                        <i class="ph ph-list text-5xl opacity-20 block mb-3"></i>
+                        <p>No transactions for this month.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="space-y-3">';
+            txs.forEach(tx => {
+                const catConfig = CATEGORIES.find(c => c.id === tx.category) || CATEGORIES[CATEGORIES.length - 1];
+                
+                // Parse date with a noon offset to avoid timezone shifts pushing it back a day
+                const txDateObj = new Date(tx.date + 'T12:00:00'); 
+                const dateStr = txDateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                const noteHtml = tx.note ? `<span class="text-gray-400 italic truncate max-w-[150px]">${tx.note}</span>` : '';
+
+                html += `
+                    <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between group">
+                        <div class="flex items-center gap-4 flex-1">
+                            <div class="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-xl ${catConfig.bgLight} ${catConfig.textColor}">
+                                ${catConfig.label.charAt(0)}
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-gray-800">${catConfig.label}</h4>
+                                <div class="flex flex-col text-sm text-gray-500">
+                                    <span>${dateStr}</span>
+                                    ${noteHtml}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span class="font-bold text-lg text-gray-900">${formatCurrency(tx.amount)}</span>
+                            <button onclick="deleteTransaction('${tx.id}')" class="p-2 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors" title="Delete transaction">
+                                <i class="ph ph-trash text-xl"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        window.deleteTransaction = async function(txId) {
+            // Using a simple custom confirmation inline would be better, but per requirements avoiding confirm()
+            // In a production app, we'd build a custom modal. For this demo, we will delete directly.
+            if (!user || !db) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'transactions', txId);
+                await deleteDoc(docRef);
+            } catch (err) {
+                console.error("Error deleting transaction:", err);
+            }
+        };
+
+        // Start app
+        init();
+
+    </script>
+</body>
+</html>
